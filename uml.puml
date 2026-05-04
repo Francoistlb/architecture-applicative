@@ -1,0 +1,110 @@
+@startuml SIRH_Domain
+!theme plain
+skinparam backgroundColor #FEFEFE
+skinparam classBackgroundColor #F0F0F0
+skinparam classBorderColor #333333
+
+class Employee {
+    -id: String
+    -email: String
+    -nom: String
+    -prenom: String
+    -dateEmbauche: Date
+    -soldeCongePayes: Number
+    -soldeRTT: Number
+    +getId(): String
+    +getEmail(): String
+    +deduireCongePayes(jours: Number): void
+    +deduireRTT(jours: Number): void
+    +ajouterCongePayes(jours: Number): void
+    +ajouterRTT(jours: Number): void
+}
+
+class Conge {
+    -id: String
+    -type: TypeConge
+    -dateDebut: Date
+    -dateFin: Date
+    -nombreJour: Number
+    -motif: String
+    -statut: StatutConge
+    -employeeId: String
+    +getId(): String
+    +getType(): TypeConge
+    +getStatut(): StatutConge
+    +approuver(): void
+    +rejeter(): void
+    +annuler(): void
+    +isApprouve(): Boolean
+}
+
+class DemandeConge {
+    -id: String
+    -employeeId: String
+    -congeId: String
+    -statutDemande: StatutDemande
+    -commentaire: String
+    +getId(): String
+    +getStatutDemande(): StatutDemande
+}
+
+class Periode {
+    -dateDebut: Date
+    -dateFin: Date
+    +getDateDebut(): Date
+    +getDateFin(): Date
+    +getNombreJoursOuvres(): Number
+    +getNombreJoursCalendaires(): Number
+    +contient(date: Date): Boolean
+    +chevauche(autre: Periode): Boolean
+}
+
+enum TypeConge {
+    CONGE_PAYEE
+    RTT
+    URGENCE_FAMILIALE
+}
+
+enum StatutConge {
+    EN_ATTENTE
+    APPROUVE
+    REJETEE
+    ANNULEE
+}
+
+enum StatutDemande {
+    EN_ATTENTE_MANAGER
+    MANAGER_APPROUVE
+    EN_ATTENTE_RH
+    RH_APPROUVEE
+    REJETEE
+}
+
+class NombreJours {
+    -valeur: Number
+    +getValue(): Number
+    +toInt(): int
+    +add(autre: NombreJours): NombreJours
+    +subtract(autre: NombreJours): NombreJours
+    +isGreaterOrEqual(autre: NombreJours): Boolean
+}
+
+interface CongeRepository {
+    +save(conge: Conge): Promise<void>
+    +findById(id: String): Promise<Conge|null>
+    +findByEmployeeId(employeeId: String): Promise<Conge[]>
+    +update(conge: Conge): Promise<void>
+    +delete(id: String): Promise<void>
+}
+
+' Relationships
+Employee "1" --> "*" Conge : has
+Employee "1" --> "*" DemandeConge : makes
+Conge "1" --> "*" DemandeConge : references
+Conge "*" --> "1" TypeConge : has
+Conge "*" --> "1" StatutConge : has
+Conge "*" --> "1" Periode : uses
+NombreJours "*" --> "1" Employee : represents solde
+CongeRepository --> Conge : manages
+
+@enduml

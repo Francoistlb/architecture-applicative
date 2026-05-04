@@ -1,0 +1,110 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Entité 1 : Employee
+model Employee {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  nom       String
+  prenom    String
+  
+  // Métier
+  dateEmbauche   DateTime
+  soldeCongePayes Float @default(25)
+  soldeRTT        Float @default(0)
+  
+  // Relations
+  conges          Conge[]
+  demandesConge   DemandeConge[]
+  approbations    Approbation[] @relation("approbateur")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Entité 2 : Conge
+model Conge {
+  id        String   @id @default(cuid())
+  type      TypeConge @default(CONGE_PAYEE)
+  dateDebut   DateTime
+  dateFin     DateTime
+  nombreJour  Float
+  motif       String?
+  statut      StatutConge @default(EN_ATTENTE)
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  demandes    DemandeConge[]
+  approbations Approbation[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Entité 3 : DemandeConge
+model DemandeConge {
+  id        String   @id @default(cuid())
+  employeeId  String
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  congeId     String
+  conge       Conge @relation(fields: [congeId], references: [id], onDelete: Cascade)
+  statutDemande StatutDemande @default(EN_ATTENTE_MANAGER)
+  commentaire   String?
+  approbations Approbation[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Modèle pour la Chain of Responsibility
+model Approbation {
+  id        String   @id @default(cuid())
+  approbateurId String
+  approbateur   Employee @relation("approbateur", fields: [approbateurId], references: [id], onDelete: Cascade)
+  congeId       String
+  conge         Conge @relation(fields: [congeId], references: [id], onDelete: Cascade)
+  demandeCongeId String
+  demandeConge   DemandeConge @relation(fields: [demandeCongeId], references: [id], onDelete: Cascade)
+  etape         EtapeValidation
+  statut        StatutApprobation
+  commentaire   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ==================== VALUE OBJECTS (Enums) ====================
+
+enum TypeConge {
+  CONGE_PAYEE
+  RTT
+  URGENCE_FAMILIALE
+}
+
+enum StatutConge {
+  EN_ATTENTE
+  APPROUVE
+  REJETEE
+  ANNULEE
+}
+
+enum StatutDemande {
+  EN_ATTENTE_MANAGER
+  MANAGER_APPROUVE
+  EN_ATTENTE_RH
+  RH_APPROUVEE
+  REJETEE
+}
+
+enum EtapeValidation {
+  MANAGER
+  RH
+}
+
+enum StatutApprobation {
+  EN_ATTENTE
+  APPROUVEE
+  REJETEE
+}
