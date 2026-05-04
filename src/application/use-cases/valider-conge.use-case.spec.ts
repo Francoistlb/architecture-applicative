@@ -1,63 +1,94 @@
 import { ValiderCongeUseCase } from './ValiderCongeUseCase';
 import { FakeCongeRepository } from '@tests/stubs/fake-conge.repository';
 import { NotificationServiceMock } from '@tests/mocks/notification.mock';
-import { TypeConge } from '@domain/entities/conge.entity';
-import { Conge } from '@domain/entities/conge.entity';
+import { Conge, TypeConge } from '@domain/entities/conge.entity';
 
-describe('ValiderCongeUseCase with Mock', () => {
+const makeConge = (id: string, type = TypeConge.CONGE_PAYEE) =>
+  new Conge({
+    id,
+    type,
+    dateDebut: new Date('2026-05-01'),
+    dateFin: new Date('2026-05-05'),
+    nombreJour: 4,
+    employeeId: 'emp-123',
+  });
+
+/**
+ * Tests du use case ValiderConge
+ * Utilise un MOCK : NotificationServiceMock (vérifie les appels reçus)
+ * et un STUB   : FakeCongeRepository     (isole la BDD)
+ */
+describe('ValiderCongeUseCase — Mock & Stub', () => {
   let useCase: ValiderCongeUseCase;
   let repository: FakeCongeRepository;
   let notificationMock: NotificationServiceMock;
 
-  beforeEach(async () => {
+  beforeEach(() => {
     repository = new FakeCongeRepository();
     notificationMock = new NotificationServiceMock();
     useCase = new ValiderCongeUseCase(repository);
   });
 
-  it('devrait approuver un congé', async () => {
-    // Créer un congé
-    const conge = new Conge({
-      id: 'conge-1',
-      type: TypeConge.CONGE_PAYEE,
-      dateDebut: new Date('2026-05-01'),
-      dateFin: new Date('2026-05-05'),
-      nombreJour: 4,
-      employeeId: 'emp-123',
-    });
+  // ─── Approbation ─────────────────────────────────────────────────────────
 
-    await repository.save(conge);
+  it('devrait approuver un congé en attente', async () => {
+    await repository.save(makeConge('conge-1'));
 
-    // Approuver
-    const result = await useCase.execute({
-      congeId: 'conge-1',
-      approuve: true,
-    });
+    const result = await useCase.execute({ congeId: 'conge-1', approuve: true });
 
     expect(result.statut).toBe('APPROUVE');
   });
 
-  it('devrait envoyer une notification au manager (Mock)', async () => {
-    // Créer un congé
-    const conge = new Conge({
-      id: 'conge-2',
-      type: TypeConge.RTT,
-      dateDebut: new Date('2026-06-01'),
-      dateFin: new Date('2026-06-02'),
-      nombreJour: 1,
-      employeeId: 'emp-456',
-    });
+  it('devrait rejeter un congé en attente', async () => {
+    await repository.save(makeConge('conge-2'));
 
+    const result = await useCase.execute({ congeId: 'conge-2', approuve: false });
+
+    expect(result.statut).toBe('REJETEE');
+  });
+
+  it('devrait retourner le congeId dans la réponse', async () => {
+    await repository.save(makeConge('conge-3'));
+
+    const result = await useCase.execute({ congeId: 'conge-3', approuve: true });
+
+    expect(result.congeId).toBe('conge-3');
+  });
+
+  // ─── Erreurs métier ───────────────────────────────────────────────────────
+
+  it('devrait lever une erreur si le congé est introuvable', async () => {
+    await expect(
+      useCase.execute({ congeId: 'inexistant', approuve: true })
+    ).rejects.toThrow('non trouvé');
+  });
+
+  it('devrait lever une erreur si on approuve un congé déjà approuvé', async () => {
+    const conge = makeConge('conge-4');
+    conge.approuver();
     await repository.save(conge);
 
-    // Simuler l'approbation ET un email
-    const result = await useCase.execute({
-      congeId: 'conge-2',
-      approuve: true,
-    });
+    await expect(
+      useCase.execute({ congeId: 'conge-4', approuve: true })
+    ).rejects.toThrow();
+  });
 
-    // Vérifier que le mock a bien reçu l'appel
-    // (dans une vrai app, tu enverrais l'email ici)
+  it('devrait lever une erreur si on rejette un congé déjà rejeté', async () => {
+    const conge = makeConge('conge-5');
+    conge.rejeter();
+    await repository.save(conge);
+
+    await expect(
+      useCase.execute({ congeId: 'conge-5', approuve: false })
+    ).rejects.toThrow();
+  });
+
+  // ─── Vérifications Mock ───────────────────────────────────────────────────
+
+  it('le mock doit enregistrer un email envoyé au manager', async () => {
+    await repository.save(makeConge('conge-6'));
+    const result = await useCase.execute({ congeId: 'conge-6', approuve: true });
+
     await notificationMock.sendEmail(
       'manager@company.com',
       'Congé approuvé',
@@ -65,6 +96,20 @@ describe('ValiderCongeUseCase with Mock', () => {
     );
 
     expect(notificationMock.wasEmailSentTo('manager@company.com')).toBe(true);
-    expect(notificationMock.getEmailsSentCount()).toBe(1);
+  });
+
+  it('le mock doit compter le nombre exact d\'emails envoyés', async () => {
+    await notificationMock.sendEmail('rh@company.com', 'Sujet 1', 'Corps 1');
+    await notificationMock.sendEmail('manager@company.com', 'Sujet 2', 'Corps 2');
+
+    expect(notificationMock.getEmailsSentCount()).toBe(2);
+  });
+
+  it('le mock doit indiquer qu\'aucun email n\'a été envoyé après reset', async () => {
+    await notificationMock.sendEmail('rh@company.com', 'Sujet', 'Corps');
+    notificationMock.reset();
+
+    expect(notificationMock.getEmailsSentCount()).toBe(0);
+    expect(notificationMock.wasEmailSentTo('rh@company.com')).toBe(false);
   });
 });
